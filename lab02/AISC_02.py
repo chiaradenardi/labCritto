@@ -16,6 +16,7 @@
 #===========================================================
 import sys
 import random
+import statistics
 import base64
  
 # S-Box
@@ -193,7 +194,6 @@ def hamming (x, y):
 if __name__ == '__main__':
     # Test vectors from "Simplified AES" (Steven Gordon)
     # (http://hw.siit.net/files/001283.pdf)
-     
     plaintext = 0b1101011100101000
     key = 0b0100101011110101
     ciphertext = 0b0010010011101100
@@ -255,6 +255,54 @@ if __name__ == '__main__':
     print('plaintext message:', message)
     print('encrypted message (base64):', base64encryption)
     print('decrypted message:', rec_message)
+    
+    print("NUOVO ESERCIZIOOOOOOOOOOOOOO")
+    #scelta chiave, generato testo casuale ed effettuata encryption
+    key=0b0000000011111111
+    keyExp(key)
+    print("key", " {0:016b}".format(key))
+    avgDistHamm = []
+    for i in range(1000):
+        #flipping of a bit rand pos in the key, espandi chiave,encripta lo stesso testo con la nuova chiave
+        plaintext = random.getrandbits(16) 
+        ciphertext1 = encrypt(plaintext)
+        error = 1 << random.randrange(16) 
+        plaintext2 = plaintext ^ error
+        print("error {0:016b}".format(error))
+        print("changed plaintext {0:016b}".format(plaintext2))
+        ciphertext2 = encrypt(plaintext2)
+        print("ciphertext1 {0:016b}".format(ciphertext1))
+        
+        #se stampa il print significa che i due testi differiscono di un solo carattere; se non è così il codice si ferma
+        dist_hamm = hamming(ciphertext1, ciphertext2)
+        print("Hamming between plaintexts:", dist_hamm)
+        avgDistHamm.append(dist_hamm)
+        
+    media = statistics.mean(avgDistHamm)
+    print("La media della distanza di Hamming è:", media)
+    
+    
+    plaintext = 0b1101011100101000 
+    avgDistHamm = []
+    for i in range(1000):
+        #flipping of a bit rand pos in the key, espandi chiave,encripta lo stesso testo con la nuova chiave
+        key1 = random.getrandbits(16)
+        keyExp(key)
+        ciphertext1 = encrypt(plaintext)
+        error = 1 << random.randrange(16) 
+        key2 = key1 ^ error
+        keyExp(key2)
+        ciphertext2 = encrypt(plaintext2)
+        
+        #se stampa il print significa che i due testi differiscono di un solo carattere; se non è così il codice si ferma
+        dist_hamm = hamming(ciphertext1, ciphertext2)
+        print("Hamming between plaintexts:", dist_hamm)
+        avgDistHamm.append(dist_hamm)
+        
+    media = statistics.mean(avgDistHamm)
+    print("La media della distanza di Hamming è:", media)
+    
+    #modifica aes con 3 e 4 round e rifai esperimenti
        
     sys.exit()
 
