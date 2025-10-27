@@ -209,40 +209,6 @@ def decrypt(ctext):
     state = addKey(intToVec((w[0] << 8) + w[1]), state)
     
     return vecToInt(state)
-
-def decrypt3round(ctext):
-    """Decrypt ciphertext block (3 rounds)"""
-    
-    # invert last round: AK-SR-NS
-    state = addKey(intToVec((w[6] << 8) + w[7]), intToVec(ctext))
-    state = shiftRow(state)
-    state = sub4NibList(sBoxI, state)
-    # invert second round
-    state = computeInvRound(w[4], w[5], state)
-    #invert first round
-    state = computeInvRound(w[2], w[3], state)
-    # invert first AddKey
-    state = addKey(intToVec((w[0] << 8) + w[1]), state)
-    
-    return vecToInt(state)
-
-def decrypt4round(ctext):
-    """Decrypt ciphertext block (4 rounds)"""
-    
-    # invert last round: AK-SR-NS
-    state = addKey(intToVec((w[8] << 8) + w[9]), intToVec(ctext))
-    state = shiftRow(state)
-    state = sub4NibList(sBoxI, state)
-    #invert third round
-    state = computeInvRound(w[6], w[7], state)
-    # invert second round
-    state = computeInvRound(w[4], w[5], state)
-    #invert first round
-    state = computeInvRound(w[2], w[3], state)
-    # invert first AddKey
-    state = addKey(intToVec((w[0] << 8) + w[1]), state)
-    
-    return vecToInt(state)
     
 def encrypt_foo(ptext):
     """Encrypt plaintext block"""
