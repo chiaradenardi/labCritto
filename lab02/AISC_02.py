@@ -108,6 +108,11 @@ def computeInvRound(subkey0, subkey1, state):
     state = sub4NibList(sBoxI, state)
     return state
     
+def lazyComputeRound(subkey0, subkey1, state):
+    # generic round: NS-SR-MC-AK
+    state = sub4NibList(sBox, state)
+    state = addKey(intToVec((subkey0 << 8) + subkey1), state)
+    return state
  
 def encrypt(ptext):
     """Encrypt plaintext block (2 rounds)"""
@@ -122,7 +127,74 @@ def encrypt(ptext):
     state = addKey(intToVec((w[4] << 8) + w[5]), state)
     
     return vecToInt(state)
+
+def encrypt3round(ptext):
+    """Encrypt plaintext block (3 rounds)"""
+        
+    # first AddKey
+    state = addKey(intToVec((w[0] << 8) + w[1]), intToVec(ptext))
+    # first round
+    state = computeRound(w[2], w[3], state)
+    # second round
+    state = computeRound(w[4], w[5], state)
+    # last round: NS-SR-AK
+    state = sub4NibList(sBox, state)
+    state = shiftRow(state)
+    state = addKey(intToVec((w[6] << 8) + w[7]), state)
+    
+    return vecToInt(state)
      
+def encrypt4round(ptext):
+    """Encrypt plaintext block (4 rounds)"""
+        
+    # first AddKey
+    state = addKey(intToVec((w[0] << 8) + w[1]), intToVec(ptext))
+    # first round
+    state = computeRound(w[2], w[3], state)
+    # second round
+    state = computeRound(w[4], w[5], state)
+    # third round
+    state = computeRound(w[6], w[7], state)
+    # last round: NS-SR-AK
+    state = sub4NibList(sBox, state)
+    state = shiftRow(state)
+    state = addKey(intToVec((w[8] << 8) + w[9]), state)
+    
+    return vecToInt(state)
+
+def lazyEncrypt(ptext):
+    """Encrypt plaintext block lazy way (no shift a mixCol)"""
+        
+    # first AddKey
+    state = addKey(intToVec((w[0] << 8) + w[1]), intToVec(ptext))
+    # first round
+    state = lazyComputeRound(w[2], w[3], state)
+    # second round
+    state = lazyComputeRound(w[4], w[5], state)
+    # third round
+    state = lazyComputeRound(w[6], w[7], state)
+    # last round: NS-SR-AK
+    state = sub4NibList(sBox, state)
+    state = addKey(intToVec((w[8] << 8) + w[9]), state)
+    
+    return vecToInt(state)
+
+def veryLazyEncrypt(ptext):
+    """Encrypt plaintext block very lazy way (no key schedule, no shift, no mixCol)"""
+        
+    # first AddKey
+    state = addKey(intToVec((w[0] << 8) + w[1]), intToVec(ptext))
+    # first round
+    state = lazyComputeRound(w[0], w[1], state)
+    # second round
+    state = lazyComputeRound(w[0], w[1], state)
+    # third round
+    state = lazyComputeRound(w[0], w[1], state)
+    # last round: NS-SR-AK
+    state = sub4NibList(sBox, state)
+    state = addKey(intToVec((w[0] << 8) + w[1]), state)
+    
+    return vecToInt(state)
      
 def decrypt(ctext):
     """Decrypt ciphertext block (2 rounds)"""
@@ -138,6 +210,39 @@ def decrypt(ctext):
     
     return vecToInt(state)
 
+def decrypt3round(ctext):
+    """Decrypt ciphertext block (3 rounds)"""
+    
+    # invert last round: AK-SR-NS
+    state = addKey(intToVec((w[6] << 8) + w[7]), intToVec(ctext))
+    state = shiftRow(state)
+    state = sub4NibList(sBoxI, state)
+    # invert second round
+    state = computeInvRound(w[4], w[5], state)
+    #invert first round
+    state = computeInvRound(w[2], w[3], state)
+    # invert first AddKey
+    state = addKey(intToVec((w[0] << 8) + w[1]), state)
+    
+    return vecToInt(state)
+
+def decrypt4round(ctext):
+    """Decrypt ciphertext block (4 rounds)"""
+    
+    # invert last round: AK-SR-NS
+    state = addKey(intToVec((w[8] << 8) + w[9]), intToVec(ctext))
+    state = shiftRow(state)
+    state = sub4NibList(sBoxI, state)
+    #invert third round
+    state = computeInvRound(w[6], w[7], state)
+    # invert second round
+    state = computeInvRound(w[4], w[5], state)
+    #invert first round
+    state = computeInvRound(w[2], w[3], state)
+    # invert first AddKey
+    state = addKey(intToVec((w[0] << 8) + w[1]), state)
+    
+    return vecToInt(state)
     
 def encrypt_foo(ptext):
     """Encrypt plaintext block"""
@@ -265,17 +370,17 @@ if __name__ == '__main__':
     for i in range(1000):
         #flipping of a bit rand pos in the key, espandi chiave,encripta lo stesso testo con la nuova chiave
         plaintext = random.getrandbits(16) 
-        ciphertext1 = encrypt(plaintext)
+        ciphertext1 = veryLazyEncrypt(plaintext)
         error = 1 << random.randrange(16) 
         plaintext2 = plaintext ^ error
-        print("error {0:016b}".format(error))
-        print("changed plaintext {0:016b}".format(plaintext2))
-        ciphertext2 = encrypt(plaintext2)
-        print("ciphertext1 {0:016b}".format(ciphertext1))
+        # print("error {0:016b}".format(error))
+        # print("changed plaintext {0:016b}".format(plaintext2))
+        ciphertext2 = veryLazyEncrypt(plaintext2)
+        # print("ciphertext1 {0:016b}".format(ciphertext1))
         
         #se stampa il print significa che i due testi differiscono di un solo carattere; se non è così il codice si ferma
         dist_hamm = hamming(ciphertext1, ciphertext2)
-        print("Hamming between plaintexts:", dist_hamm)
+        # print("Hamming between plaintexts:", dist_hamm)
         avgDistHamm.append(dist_hamm)
         
     media = statistics.mean(avgDistHamm)
@@ -288,15 +393,15 @@ if __name__ == '__main__':
         #flipping of a bit rand pos in the key, espandi chiave,encripta lo stesso testo con la nuova chiave
         key1 = random.getrandbits(16)
         keyExp(key)
-        ciphertext1 = encrypt(plaintext)
+        ciphertext1 = veryLazyEncrypt(plaintext)
         error = 1 << random.randrange(16) 
         key2 = key1 ^ error
         keyExp(key2)
-        ciphertext2 = encrypt(plaintext2)
+        ciphertext2 = veryLazyEncrypt(plaintext2)
         
         #se stampa il print significa che i due testi differiscono di un solo carattere; se non è così il codice si ferma
         dist_hamm = hamming(ciphertext1, ciphertext2)
-        print("Hamming between plaintexts:", dist_hamm)
+        # print("Hamming between plaintexts:", dist_hamm)
         avgDistHamm.append(dist_hamm)
         
     media = statistics.mean(avgDistHamm)
