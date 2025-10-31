@@ -219,7 +219,7 @@ def encrypt_foo(ptext):
     state = addKey(intToVec((w[0] << 8) + w[1]), state)
     
     return vecToInt(state)
-     
+
 def decrypt_foo(ctext):
     """Decrypt ciphertext block"""
     
@@ -263,12 +263,201 @@ def hamming (x, y):
     
  
 if __name__ == '__main__':
+    print("########################################")
+    print("### ESECUZIONE DEL BONUS TASK ###")
+    print("########################################\n")
+
+    # --- Dati forniti dal problema ---
+    known_pairs = [
+        (0b0111001001101110, 0b0011011101111111), # m0, c0
+        (0b1101001101001001, 0b1111110001001110), # m1, c1
+        (0b1011010011100101, 0b1000100100001000)  # m2, c2
+    ]
+
+    # Convertiamo i plain/cipher noti in vettori di nibble per l'analisi
+    known_m_vecs = [intToVec(m) for m, c in known_pairs]
+    known_c_vecs = [intToVec(c) for m, c in known_pairs]
+    
+    # Applichiamo P_inv (che è shiftRow) a tutti i ciphertext noti
+    # P_inv(c) = [c0, c1, c3, c2]
+    known_c_inv_vecs = [shiftRow(c_vec) for c_vec in known_c_vecs]
+
+    # Variabili per salvare i nibble delle chiavi trovate
+    found_w = [None] * 4 # Questo diventerà k0 = [w0, w1, w2, w3]
+    found_z = [None] * 4 # Questo diventerà P_inv(k1) = [z0, z1, z2, z3]
+
+    # --- FASE 1: ATTACCO MEET-IN-THE-MIDDLE ---
+    print("--- Inizio attacco Meet-in-the-Middle per trovare k0 e k1 ---")
+
+    # Iteriamo su ogni posizione del nibble (i = 0, 1, 2, 3)
+    for i in range(4):
+        #print(f"--- Attaccando la posizione {i} del nibble ---")
+        candidates = []
+
+        # Brute-force su 16 (per w) * 16 (per z) = 256 possibilità
+        for w_guess in range(16): # 4 bit per w_i
+            for z_guess in range(16): # 4 bit per z_i
+                
+                is_valid_for_all_pairs = True
+                
+                # Verifichiamo la coppia (w, z) su TUTTE le coppie m/c note
+                for j in range(len(known_pairs)):
+                    m_vec = known_m_vecs[j]
+                    c_inv_vec = known_c_inv_vecs[j]
+
+                    # Equazione d'oro: [P_inv(c)]_i ^ z_i = S([m]_i ^ w_i)
+                    
+                    # Lato Sinistro (LHS): [P_inv(c)]_i ^ z_i
+                    lhs = c_inv_vec[i] ^ z_guess
+                    
+                    # Lato Destro (RHS): S([m]_i ^ w_i)
+                    rhs = sBox[m_vec[i] ^ w_guess]
+
+                    # Se non corrispondono, questa coppia (w,z) è errata
+                    if lhs != rhs:
+                        is_valid_for_all_pairs = False
+                        break # Passa alla prossima coppia (w,z)
+                
+                # Se la coppia (w,z) ha superato i controlli di *tutte* le coppie m/c...
+                if is_valid_for_all_pairs:
+                    # ...è una candidata valida
+                    #print(f"  Trovato candidato per i={i}: w_{i}=0x{w_guess:x}, z_{i}=0x{z_guess:x}")
+                    candidates.append((w_guess, z_guess))
+        
+        # Ci aspettiamo di trovare UN solo candidato
+        if len(candidates) == 1:
+            found_w[i] = candidates[0][0]
+            found_z[i] = candidates[0][1]
+            print(f"  [Nibble {i}] Chiavi parziali trovate: w_{i}=0x{found_w[i]:x}, z_{i}=0x{found_z[i]:x}")
+        else:
+            print(f"  [Nibble {i}] ERRORE: Trovati {len(candidates)} candidati. L'attacco potrebbe fallire.")
+
+
+    # --- FASE 2: Ricostruzione delle Chiavi ---
+    
+    # k0 è la concatenazione diretta dei nibble w_i
+    # k0 = [w0, w1, w2, w3]
+    k0 = vecToInt(found_w)
+
+    # z è P_inv(k1). Dobbiamo calcolare k1 = P(z)
+    # P(z) è shiftRow(z)
+    # z = [z0, z1, z2, z3]
+    # k1 = [z0, z1, z3, z2]  <- shiftRow(z)
+    k1_vec = shiftRow(found_z)
+    k1 = vecToInt(k1_vec)
+
+    print("\n--- CHIAVI FINALI RICOSTRUITE ---")
+    print(f"k0 = {k0:016b} (0x{k0:04x})")
+    print(f"k1 = {k1:016b} (0x{k1:04x})")
+
+    # --- FASE 3: Verifica delle Chiavi (Opzionale ma consigliata) ---
+    print("\n--- Verifica delle chiavi sulle coppie note ---")
+    verification_ok = True
+    for j in range(len(known_pairs)):
+        m, c = known_pairs[j]
+        c_test = encrypt_1r_2k(m, k0, k1)
+        if c_test != c:
+            verification_ok = False
+        print(f"  Test coppia {j}: {c_test == c}")
+    
+    if not verification_ok:
+        print("  *** ERRORE NELLA VERIFICA! Le chiavi trovate sono errate. ***")
+        sys.exit(1)
+
+    # --- FASE 4: Decrittografia del file 'ciphertext_2k.txt' ---
+    print("\n--- Decrittografia di 'ciphertext_2k.txt' ---")
+    
+    try:
+        # Apri il file in modalità 'read bytes' (rb)
+        with open("lab02/ciphertext_2k.txt", "rb") as f:
+            encryption_b64 = f.read()
+
+        encryption = base64.b64decode(encryption_b64)
+        rec_message = ""
+        
+        # Itera sui byte, decifra i blocchi e accumula i caratteri
+        for b0, b1 in zip(*[iter(encryption)] * 2):
+            ciphertext_block = (b0 << 8) + b1
+            plaintext_block = decrypt_1r_2k(ciphertext_block, k0, k1)
+            
+            # Ricostruisci la stringa
+            rec_message += chr((plaintext_block & 0xff00) >> 8)
+            rec_message += chr(plaintext_block & 0x00ff)
+
+        print("\n--- MESSAGGIO DECIFRATO ---")
+        # Usiamo .rstrip() per rimuovere eventuali caratteri di padding
+        print(rec_message.rstrip())
+        print("---------------------------")
+
+    except FileNotFoundError:
+        print("\nERRORE: File 'ciphertext_2k.txt' non trovato.")
+    except Exception as e:
+        print(f"\nSi è verificato un errore durante la decrittografia del file: {e}")
+
+    # --- FASE 5: Complessità dell'Attacco ---
+    print("\n--- Complessità dell'Attacco ---")
+    print("La complessità dell'attacco è data dalla formula (n/b) * (2^(2*b))")
+    print("Dove:")
+    print("  n = 16 bit (dimensione totale del blocco)")
+    print("  b = 4 bit (dimensione dell'S-Box, o nibble)")
+    print("\nCalcolo:")
+    print("  Complessità = (16 / 4) * (2^(2 * 4))")
+    print("  Complessità = 4 * (2^8)")
+    print("  Complessità = 4 * 256")
+    print("  Complessità = 1024")
+    print("\nL'attacco richiede circa 1024 operazioni per nibble (più il filtraggio con le coppie aggiuntive), un numero estremamente basso.")
+    
     # Test vectors from "Simplified AES" (Steven Gordon)
     # (http://hw.siit.net/files/001283.pdf)
     plaintext = 0b1101011100101000
     key = 0b0100101011110101
     ciphertext = 0b0010010011101100
+    
+    #FASE 1
+    #ricreaiamo la fun encrypt foo ma ci fermiamo prima della add key bc vogliamo convertire il vettore
+    known_plain = 0b0111001001101110 
+    known_cipher = 0b0100000000001000  
+    stato_int = intToVec(known_plain)
+    stato_int=sub4NibList(sBox, stato_int)
+    stato_int=shiftRow(stato_int)
+    
+    #fermarci prima della add key per fare il reverse e ottenere la chiave
+    stato_int=vecToInt(stato_int)
+    print("stato intermedio prima della add key:", " {0:016b}".format(stato_int))
+    
+    #ora tramite xor otteniamo la chiave (pText xor chiave --> inverso (x chiave)= ptext xor ctext)
+    key_intermedia = stato_int ^ known_cipher
+    print("chiave ottenuta:", " {0:016b}".format(key_intermedia))
+    keyExp(key_intermedia)
+    
+    #leggiamo il file ciphertext.txt e decifriamo il messaggio (FASE 2)
+    decrypted = decrypt_foo(known_cipher)
+    try:
+            with open("lab02/ciphertext.txt", "r") as text_file: 
+                encryption = base64.b64decode(text_file.read())
+                
+            rec_message = ""
+            
+            # Itera sui byte, decifra i blocchi e accumula i caratteri
+            for b0, b1 in zip(*[iter(encryption)] * 2):
+                ciphertext_block = (b0 << 8) + b1
+                plaintext_block = decrypt_foo(ciphertext_block)
+                
+                # Ricostruisci la stringa
+                rec_message += chr((plaintext_block & 0xff00) >> 8)
+                rec_message += chr(plaintext_block & 0x00ff)
+
+            print("\n--- MESSAGGIO DECIFRATO ---")
+            print(rec_message)
+            print("---------------------------")
+
+    except FileNotFoundError:
+        print("\nERRORE: File 'ciphertext.txt' non trovato.")
+    except Exception as e:
+        print(f"\nSi è verificato un errore: {e}")  
+    
     keyExp(key)
+    
     try:
         assert encrypt(plaintext) == ciphertext
     except AssertionError:
